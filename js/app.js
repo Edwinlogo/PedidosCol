@@ -11,6 +11,7 @@
     position: null,
     draft: null,
     selectedOrders: new Set(),
+    histOnlyDown: false,
     installEvt: null,
   };
 
@@ -133,16 +134,11 @@
 
   function renderHeader() {
     const inv = S.inventory;
-    $('#invBadge').textContent = inv ? `Inv. ${fmtShort(inv.date)}` : 'Sin inv.';
-    const banner = $('#banner');
+    const badge = $('#invBadge');
     const today = isoDay(new Date());
-    if (!inv) {
-      banner.innerHTML = '<span>⚠ Sin inventario</span><button class="btn small" data-go="inventario">Cargar</button>';
-      banner.classList.remove('hidden');
-    } else if (inv.date < today) {
-      banner.innerHTML = `<span>⚠ Inventario del <b>${fmtDay(inv.date)}</b></span><button class="btn small" data-go="inventario">Actualizar</button>`;
-      banner.classList.remove('hidden');
-    } else banner.classList.add('hidden');
+    const upToDate = inv && inv.date >= today;
+    badge.textContent = inv ? `Inv. ${fmtShort(inv.date)}` : 'Sin inv.';
+    badge.className = `badge ${upToDate ? 'ok' : 'warn'}`;
   }
 
   /* ======================= Borrador ======================= */
@@ -262,11 +258,11 @@
         </div>`).join('') : '<div class="empty">Sin clientes</div>';
     };
     $('#pickSearch', body).addEventListener('input', debounce(render, 100));
-    body.addEventListener('click', e => {
+    body.onclick = e => {
       const it = e.target.closest('[data-pick]');
       if (it) { setClient(Number(it.dataset.pick), false, null); closeModal(); }
       if (e.target.id === 'pickNew') openClientEditor(null, { useHere: true, selectAfter: true });
-    });
+    };
     render();
   }
 
@@ -331,7 +327,9 @@
     }).join('');
   }
 
+  let savingOrder = false;
   async function finishOrder() {
+    if (savingOrder) return;
     const c = clientById(S.draft.clientId);
     if (!c) { toast('Selecciona un cliente'); openClientPicker(); return; }
     const lines = S.draft.lines.filter(l => Number(l.qty) > 0).map(l => ({
@@ -339,24 +337,31 @@
       discount: l.discount === '' ? '' : Number(l.discount), bonus: l.bonus === '' ? '' : Number(l.bonus),
     }));
     if (!lines.length) { toast('Agrega al menos 1 producto'); return; }
-    if (!confirm(`¿Guardar pedido de ${c.name} (${lines.length} prod.)?`)) return;
 
-    const now = new Date().toISOString();
-    const order = {
-      clientId: c.id, clientName: c.name, clientCode: c.code || '', clientAddress: c.address || '',
-      date: S.draft.origDate || now, lines, notes: S.draft.notes || '',
-      location: S.position ? { lat: S.position.lat, lng: S.position.lng, acc: Math.round(S.position.acc) } : null,
-      distance: clientDist(c), autoClient: !!S.draft.autoClient,
-      inventoryDate: S.inventory?.date || null, exportedAt: null,
-    };
-    if (S.draft.editingId) { order.id = S.draft.editingId; order.updatedAt = now; }
-    const id = await DB.put('orders', order);
-    S.draft = newDraft(); saveDraft();
-    await computeCommitted();
-    $('#prodSearch').value = ''; renderProdResults();
-    renderLines(); renderClientCard(); showView('pedido');
-    toast(`✔ Pedido #${id} guardado`);
-    openOrderDetail(id);
+    savingOrder = true;
+    try {
+      const now = new Date().toISOString();
+      const existing = await DB.all('orders');
+      const nextId = S.draft.editingId || (existing.reduce((m, x) => Math.max(m, Number(x.id) || 0), 0) + 1);
+      const order = {
+        id: nextId,
+        clientId: c.id, clientName: c.name, clientCode: c.code || '', clientAddress: c.address || '',
+        date: S.draft.origDate || now, lines, notes: S.draft.notes || '',
+        location: S.position ? { lat: S.position.lat, lng: S.position.lng, acc: Math.round(S.position.acc) } : null,
+        distance: clientDist(c), autoClient: !!S.draft.autoClient,
+        inventoryDate: S.inventory?.date || null, exportedAt: null,
+      };
+      if (S.draft.editingId) order.updatedAt = now;
+      await DB.put('orders', order);
+      S.draft = newDraft(); saveDraft();
+      await computeCommitted();
+      $('#prodSearch').value = ''; renderProdResults();
+      renderLines(); renderClientCard();
+      toast(`✔ Pedido #${nextId} guardado`);
+      showView('historial');
+    } finally {
+      savingOrder = false;
+    }
   }
 
   /* ======================= Historial ======================= */
@@ -367,12 +372,14 @@
       const day = isoDay(o.date);
       if (from && day < from) return false;
       if (to && day > to) return false;
-      if (q && !norm(`${o.clientName} ${o.clientCode} ${o.id}`).includes(q)) return false;
+      if (S.histOnlyDown && !o.exportedAt) return false;
+      if (q && !norm(`${o.clientName} ${o.clientCode} ${o.id} #${o.id}`).includes(q)) return false;
       return true;
-    }).sort((a, b) => b.date.localeCompare(a.date));
+    }).sort((a, b) => b.date.localeCompare(a.date) || b.id - a.id);
   }
 
   async function renderHistory() {
+    $('#btnHistDown').classList.toggle('on', S.histOnlyDown);
     const orders = await filteredOrders();
     const ids = new Set(orders.map(o => o.id));
     [...S.selectedOrders].forEach(id => { if (!ids.has(id)) S.selectedOrders.delete(id); });
@@ -389,9 +396,9 @@
         <div class="card order-card">
           <input type="checkbox" data-sel="${o.id}" ${S.selectedOrders.has(o.id) ? 'checked' : ''}>
           <div class="grow" data-open="${o.id}">
-            <div class="row between"><b class="truncate">${esc(o.clientName)}</b><span class="small muted">#${o.id} · ${fmtTime(o.date)}</span></div>
-            <div class="small muted">${o.lines.length} ref. · ${fmt(cajas)} CAR
-              ${o.exportedAt ? '<span class="tag ok">Excel</span>' : ''}${o.updatedAt ? '<span class="tag">Editado</span>' : ''}</div>
+            <div class="row between"><div class="row min0"><span class="order-num">#${o.id}</span><b class="truncate">${esc(o.clientName)}</b></div><span class="small muted">${fmtTime(o.date)}</span></div>
+            <div class="small muted mt-xs">${o.lines.length} ref. · ${fmt(cajas)} CAR
+              ${o.exportedAt ? '<span class="tag ok">Descargado</span>' : ''}${o.updatedAt ? '<span class="tag">Editado</span>' : ''}</div>
           </div>
         </div>`;
     });
@@ -400,19 +407,19 @@
   }
   function updateExportBtn() {
     const n = S.selectedOrders.size;
-    $('#btnExportSel').textContent = n ? `⬇ Excel (${n})` : '⬇ Excel';
+    $('#btnExportSel').textContent = n ? `⬇ Descargar (${n})` : '⬇ Descargar';
   }
 
   async function exportOrdersFlow(orders) {
     if (!orders.length) { toast('Sin pedidos'); return; }
     if (orders.length === 1) return doExport(orders, 'single');
-    const body = openModal(`Exportar (${orders.length})`, `
+    const body = openModal(`Descargar (${orders.length})`, `
       <button class="btn block primary" data-mode="sheets">Una hoja por pedido</button>
       <button class="btn block mt" data-mode="merge">Consolidado en una hoja</button>`);
-    body.addEventListener('click', e => {
+    body.onclick = e => {
       const b = e.target.closest('[data-mode]');
       if (b) { closeModal(); doExport(orders, b.dataset.mode); }
-    });
+    };
   }
 
   async function doExport(orders, mode, share = false) {
@@ -440,22 +447,22 @@
     const loc = o.location ? ` · <a href="https://maps.google.com/?q=${o.location.lat},${o.location.lng}" target="_blank" rel="noopener">Mapa</a>` : '';
     const body = openModal(`Pedido #${o.id}`, `
       <div><b>${esc(o.clientName)}</b> ${o.clientCode ? `<span class="muted small">#${esc(o.clientCode)}</span>` : ''}</div>
-      <div class="small muted">${fmtDay(isoDay(o.date))} ${fmtTime(o.date)}${loc}</div>
+      <div class="small muted">${fmtDay(isoDay(o.date))} ${fmtTime(o.date)}${loc}${o.exportedAt ? ' · <span class="tag ok">Descargado</span>' : ''}</div>
       <div class="table-wrap"><table class="detail"><thead><tr><th>Cód</th><th>Producto</th><th class="num">Cant</th><th>UM</th><th class="num">Desc</th><th class="num">Bon</th></tr></thead><tbody>${rows}</tbody></table></div>
       ${o.notes ? `<p class="small"><b>Obs.:</b> ${esc(o.notes)}</p>` : ''}
       <div class="grid-2 mt">
-        <button class="btn primary" data-a="export">⬇ Excel</button>
+        <button class="btn primary" data-a="export">⬇ Descargar</button>
         <button class="btn" data-a="share">📤 Compartir</button>
         <button class="btn" data-a="edit">✏ Editar</button>
         <button class="btn" data-a="dup">⧉ Repetir</button>
         ${c ? '<button class="btn" data-a="saveList">📋 Fijar lista</button>' : ''}
         <button class="btn danger" data-a="del">🗑 Eliminar</button>
       </div>`);
-    body.addEventListener('click', async e => {
+    body.onclick = async e => {
       const a = e.target.closest('[data-a]')?.dataset.a;
       if (!a) return;
-      if (a === 'export') doExport([o], 'single');
-      if (a === 'share') doExport([o], 'single', true);
+      if (a === 'export') { await doExport([o], 'single'); openOrderDetail(id); }
+      if (a === 'share') { await doExport([o], 'single', true); openOrderDetail(id); }
       if (a === 'edit' || a === 'dup') {
         if (S.draft.lines.length && !confirm('¿Reemplazar el pedido actual?')) return;
         S.draft = { ...newDraft(), clientId: o.clientId, lines: o.lines.map(l => ({ ...l })), notes: o.notes,
@@ -467,10 +474,13 @@
         c.products = o.lines.map(l => ({ code: l.code, name: l.name, qty: l.qty, unit: l.unit, discount: l.discount }));
         await DB.put('clients', c); toast('Lista guardada');
       }
-      if (a === 'del' && confirm(`¿Eliminar pedido #${o.id}?`)) {
-        await DB.del('orders', o.id); await computeCommitted(); closeModal(); renderHistory(); toast('Eliminado');
+      if (a === 'del') {
+        if (!confirm(`¿Eliminar pedido #${o.id}?`)) return;
+        await DB.del('orders', o.id);
+        S.selectedOrders.delete(o.id);
+        await computeCommitted(); closeModal(); renderHistory(); toast('Eliminado');
       }
-    });
+    };
   }
 
   /* ======================= Clientes ======================= */
@@ -486,6 +496,13 @@
       </div>`).join('')}</div>` : '<div class="empty">Sin clientes</div>';
   }
 
+  /** Si se pega un par "lat, lng" de Google Maps (ej. "4.4359433,-75.1734278"), rellena ambos campos. */
+  function splitCoordsText(text) {
+    const m = String(text || '').trim().match(/^\(?(-?\d+(?:\.\d+)?)\s*[,;\s]\s*(-?\d+(?:\.\d+)?)\)?$/);
+    return m ? [m[1], m[2]] : null;
+  }
+
+  let savingClient = false;
   function openClientEditor(id, opts = {}) {
     const orig = id ? clientById(id) : null;
     const c = orig ? JSON.parse(JSON.stringify(orig)) : { code: '', name: '', address: '', phone: '', lat: null, lng: null, radius: null, products: [] };
@@ -500,8 +517,8 @@
       </div>
       <label class="field">Dirección<input id="ceAddr" value="${esc(c.address)}"></label>
       <div class="row gap-xs">
-        <label class="field grow">Latitud<input id="ceLat" type="number" step="any" inputmode="decimal" value="${c.lat ?? ''}"></label>
-        <label class="field grow">Longitud<input id="ceLng" type="number" step="any" inputmode="decimal" value="${c.lng ?? ''}"></label>
+        <label class="field grow">Latitud<input id="ceLat" type="text" inputmode="decimal" placeholder="4.4359,-75.1734" value="${c.lat ?? ''}"></label>
+        <label class="field grow">Longitud<input id="ceLng" type="text" inputmode="decimal" value="${c.lng ?? ''}"></label>
         <label class="field" style="width:4.8rem">Radio<input id="ceRad" type="number" inputmode="numeric" placeholder="${S.settings.radius}" value="${c.radius ?? ''}"></label>
       </div>
       <div class="grid-2">
@@ -517,11 +534,26 @@
         ${orig ? '<button class="btn" id="ceOrder">🛒 Pedido</button><button class="btn danger" id="ceDel">🗑</button>' : ''}
       </div>`);
 
+    const latIn = $('#ceLat', body), lngIn = $('#ceLng', body);
     const updMap = () => {
-      const lat = $('#ceLat', body).value, lng = $('#ceLng', body).value;
+      const lat = latIn.value.trim(), lng = lngIn.value.trim();
       const a = $('#ceMap', body);
       a.href = lat && lng ? `https://maps.google.com/?q=${lat},${lng}` : `https://maps.google.com/?q=${encodeURIComponent($('#ceAddr', body).value)}`;
     };
+    const handleCoordInput = (e) => {
+      const pair = splitCoordsText(latIn.value);
+      if (pair) { latIn.value = pair[0]; lngIn.value = pair[1]; }
+      updMap();
+    };
+    latIn.addEventListener('paste', e => {
+      const txt = e.clipboardData?.getData('text');
+      const pair = splitCoordsText(txt);
+      if (pair) { e.preventDefault(); latIn.value = pair[0]; lngIn.value = pair[1]; updMap(); toast('📍 Latitud y longitud pegadas'); }
+    });
+    latIn.addEventListener('input', handleCoordInput);
+    lngIn.addEventListener('input', updMap);
+    $('#ceAddr', body).addEventListener('input', updMap);
+
     const renderList = () => {
       $('#ceList', body).innerHTML = c.products.length ? c.products.map((p, i) => `
         <div class="item" style="cursor:default">
@@ -533,20 +565,17 @@
     };
     updMap(); renderList();
 
-    $('#ceLat', body).addEventListener('input', updMap);
-    $('#ceLng', body).addEventListener('input', updMap);
-    $('#ceAddr', body).addEventListener('input', updMap);
     $('#ceSearch', body).addEventListener('input', debounce(() => {
       const res = searchProducts($('#ceSearch', body).value, 25);
       $('#ceResults', body).innerHTML = res.map(p => productItem(p, 'data-ceadd')).join('');
     }, 120));
-    body.addEventListener('input', e => {
+    body.oninput = e => {
       if (e.target.dataset.lq !== undefined) c.products[e.target.dataset.lq].qty = parseFloat(e.target.value) || 0;
-    });
-    body.addEventListener('change', e => {
+    };
+    body.onchange = e => {
       if (e.target.dataset.lu !== undefined) c.products[e.target.dataset.lu].unit = e.target.value;
-    });
-    body.addEventListener('click', async e => {
+    };
+    body.onclick = async e => {
       const t = e.target;
       const add = t.closest('[data-ceadd]');
       if (add) {
@@ -559,25 +588,39 @@
         t.textContent = 'Ubicando…';
         navigator.geolocation.getCurrentPosition(pos => {
           S.position = { lat: pos.coords.latitude, lng: pos.coords.longitude, acc: pos.coords.accuracy, at: Date.now() };
-          $('#ceLat', body).value = pos.coords.latitude.toFixed(6); $('#ceLng', body).value = pos.coords.longitude.toFixed(6);
+          latIn.value = pos.coords.latitude.toFixed(6); lngIn.value = pos.coords.longitude.toFixed(6);
           t.textContent = `📍 ±${Math.round(pos.coords.accuracy)} m`; updMap();
         }, () => { t.textContent = '📍 Mi ubicación'; toast('Sin GPS'); }, { enableHighAccuracy: true, timeout: 15000 });
       }
       if (t.id === 'ceSave') {
+        if (savingClient) return;
         const name = $('#ceName', body).value.trim();
+        const code = $('#ceCode', body).value.trim();
         if (!name) { toast('Falta el nombre'); return; }
-        const pf = (v) => (v === '' ? null : parseFloat(v));
+        // Evitar duplicados por nombre o código
+        const dup = S.clients.find(x => x.id !== orig?.id && (
+          (code && x.code && norm(x.code) === norm(code)) || norm(x.name) === norm(name)
+        ));
+        if (dup) { toast(`Ya existe "${dup.name}"`); return; }
+
+        const pf = (v) => { const n = parseFloat(String(v).replace(',', '.')); return isNaN(n) ? null : n; };
         Object.assign(c, {
-          name, code: $('#ceCode', body).value.trim(), phone: $('#cePhone', body).value.trim(), address: $('#ceAddr', body).value.trim(),
-          lat: pf($('#ceLat', body).value), lng: pf($('#ceLng', body).value), radius: pf($('#ceRad', body).value),
+          name, code, phone: $('#cePhone', body).value.trim(), address: $('#ceAddr', body).value.trim(),
+          lat: pf(latIn.value), lng: pf(lngIn.value), radius: pf($('#ceRad', body).value),
         });
-        const newId = await DB.put('clients', c);
-        S.clients = await DB.all('clients');
-        closeModal(); toast('Guardado');
-        if (opts.selectAfter) setClient(newId, false, null);
-        renderClients(); renderClientCard();
+        savingClient = true;
+        try {
+          const newId = await DB.put('clients', c);
+          S.clients = await DB.all('clients');
+          closeModal(); toast('Guardado');
+          if (opts.selectAfter) setClient(newId, false, null);
+          renderClients(); renderClientCard();
+        } finally {
+          savingClient = false;
+        }
       }
-      if (t.id === 'ceDel' && confirm(`¿Eliminar ${orig.name}?`)) {
+      if (t.id === 'ceDel') {
+        if (!confirm(`¿Eliminar ${orig.name}?`)) return;
         await DB.del('clients', orig.id); S.clients = await DB.all('clients');
         if (S.draft.clientId === orig.id) { S.draft.clientId = null; saveDraft(); }
         closeModal(); renderClients(); renderClientCard(); toast('Eliminado');
@@ -587,7 +630,7 @@
         if (S.draft.lines.length && S.draft.clientId !== orig.id && !confirm('¿Cambiar cliente del pedido actual?')) return;
         setClient(orig.id, false, null); showView('pedido');
       }
-    });
+    };
   }
 
   async function importClientsFile(file) {
@@ -595,11 +638,15 @@
       const list = await Excel.parseClients(file);
       let added = 0, updated = 0;
       for (const n of list) {
-        const ex = S.clients.find(c => (n.code && c.code === n.code) || (!n.code && norm(c.name) === norm(n.name)));
+        const ex = S.clients.find(c => (n.code && c.code === n.code) || norm(c.name) === norm(n.name));
         if (ex) {
           Object.assign(ex, Object.fromEntries(Object.entries(n).filter(([, v]) => v !== null && v !== '' && !(Array.isArray(v) && !v.length))));
           await DB.put('clients', ex); updated++;
-        } else { await DB.put('clients', n); added++; }
+        } else {
+          const id = await DB.put('clients', n);
+          S.clients.push({ ...n, id });
+          added++;
+        }
       }
       S.clients = await DB.all('clients');
       renderClients(); renderClientCard();
@@ -622,7 +669,7 @@
       await DB.setMeta('inventory', S.inventory);
       S.products = new Map(r.products.map(p => [p.code, p]));
       await computeCommitted();
-      renderHeader(); renderInventory(); renderLines(); renderProdResults();
+      renderHeader(); renderInventory(); renderSettings(); renderLines(); renderProdResults();
       toast(`✔ Inv. ${fmtDay(date)} (${r.products.length})`, 3000);
       return true;
     } catch (e) {
@@ -632,26 +679,26 @@
   }
 
   function renderInventory() {
-    const inv = S.inventory;
-    $('#invSummary').innerHTML = inv
-      ? `<b>${fmtDay(inv.date)}</b> · ${fmt(inv.count)} prod. · ${fmt(inv.refCount || 0)} ⭐<div class="muted">${esc(inv.fileName)}</div>`
-      : 'Sin inventario cargado';
     const q = norm($('#invSearch').value).trim();
     const f = $('#invFilter').value;
-    let list = q ? searchProducts(q, 200) : [...S.products.values()].sort((a, b) => a.group.localeCompare(b.group) || a.name.localeCompare(b.name));
+    let list = q ? searchProducts(q, 250) : [...S.products.values()].sort((a, b) => a.group.localeCompare(b.group) || a.name.localeCompare(b.name));
     if (f === 'ref') list = list.filter(p => p.ref);
     if (f === 'stock') list = list.filter(p => available(p.code) > 0);
     const total = list.length;
-    $('#invList').innerHTML = list.slice(0, 150).map(p => `
+    $('#invList').innerHTML = list.slice(0, 200).map(p => `
       <div class="item" style="cursor:default">
         <div class="grow min0"><div class="name">${esc(p.name)}</div>
         <div class="sub">#${esc(p.code)} · Stock ${fmt(p.stock)} · Trán. ${fmt(p.transito)} · Pend. ${fmt(p.pendiente)}${S.committed.get(p.code) ? ` · Ped. ${fmt(S.committed.get(p.code))}` : ''}</div></div>
         ${stockBadge(p.code)}
-      </div>`).join('') + (total > 150 ? `<div class="empty">150 de ${total}</div>` : '');
+      </div>`).join('') + (total > 200 ? `<div class="empty">200 de ${total}</div>` : '');
   }
 
   /* ======================= Ajustes ======================= */
   async function renderSettings() {
+    const inv = S.inventory;
+    $('#invSummary').innerHTML = inv
+      ? `<b>${fmtDay(inv.date)}</b> · ${fmt(inv.count)} prod. · ${fmt(inv.refCount || 0)} ⭐<div class="muted">${esc(inv.fileName)}</div>`
+      : 'Sin inventario cargado';
     $('#setRadius').value = S.settings.radius;
     $('#setDeduct').checked = !!S.settings.deduct;
     applyTheme();
@@ -709,7 +756,6 @@
     $('#modalClose').addEventListener('click', closeModal);
     $('#modal').addEventListener('click', e => { if (e.target.id === 'modal') closeModal(); });
 
-    // Tema rápido y selector en ajustes
     $('#btnTheme').addEventListener('click', () => {
       S.settings.theme = isDark() ? 'light' : 'dark';
       saveSettings();
@@ -758,7 +804,9 @@
     lines.addEventListener('change', e => { if (e.target.dataset.f) renderLines(); });
     $('#orderNotes').addEventListener('input', e => { S.draft.notes = e.target.value; saveDraft(); });
     $('#btnClearOrder').addEventListener('click', () => {
-      if (S.draft.lines.length && confirm('¿Vaciar pedido?')) { S.draft.lines = []; saveDraft(); renderLines(); }
+      if ((S.draft.lines.length || S.draft.notes) && confirm('¿Limpiar el pedido actual?')) {
+        S.draft.lines = []; S.draft.notes = ''; saveDraft(); renderLines();
+      }
     });
     $('#btnFinish').addEventListener('click', finishOrder);
 
@@ -766,7 +814,8 @@
     const rh = debounce(renderHistory, 150);
     ['#histSearch', '#histFrom', '#histTo'].forEach(s => $(s).addEventListener('input', rh));
     $('#btnHistToday').addEventListener('click', () => { const d = isoDay(new Date()); $('#histFrom').value = d; $('#histTo').value = d; renderHistory(); });
-    $('#btnHistAll').addEventListener('click', () => { $('#histFrom').value = ''; $('#histTo').value = ''; $('#histSearch').value = ''; renderHistory(); });
+    $('#btnHistAll').addEventListener('click', () => { $('#histFrom').value = ''; $('#histTo').value = ''; $('#histSearch').value = ''; S.histOnlyDown = false; renderHistory(); });
+    $('#btnHistDown').addEventListener('click', () => { S.histOnlyDown = !S.histOnlyDown; renderHistory(); });
     $('#btnSelAll').addEventListener('click', async () => {
       const orders = await filteredOrders();
       const all = orders.every(o => S.selectedOrders.has(o.id));
@@ -781,7 +830,7 @@
     $('#btnExportSel').addEventListener('click', async () => {
       const orders = await filteredOrders();
       const chosen = S.selectedOrders.size ? orders.filter(o => S.selectedOrders.has(o.id)) : orders;
-      if (!S.selectedOrders.size && chosen.length && !confirm(`¿Exportar los ${chosen.length} pedidos?`)) return;
+      if (!S.selectedOrders.size && chosen.length && !confirm(`¿Descargar los ${chosen.length} pedidos?`)) return;
       exportOrdersFlow(chosen.slice().reverse());
     });
 

@@ -17,12 +17,10 @@
       <h1 id="viewTitle">Pedido</h1>
     </div>
     <div class="row gap-s">
-      <span id="invBadge" class="badge">Sin inv.</span>
+      <button id="invBadge" class="badge warn" data-go="mas" title="Estado del inventario">Sin inv.</button>
       <button class="icon-btn" id="btnTheme" title="Cambiar tema" aria-label="Cambiar tema">🌙</button>
     </div>
   </header>
-
-  <div id="banner" class="banner hidden"></div>
 
   <main>
     <!-- ================= NUEVO PEDIDO ================= -->
@@ -49,16 +47,14 @@
       </div>
 
       <div class="card">
-        <div class="row between mb-xs">
-          <h2>Productos <span class="muted" id="lineCount"></span></h2>
-          <button class="btn small ghost danger" id="btnClearOrder">Vaciar</button>
-        </div>
+        <h2>Productos <span class="muted" id="lineCount"></span></h2>
         <div id="orderLines" class="lines"></div>
         <textarea id="orderNotes" rows="2" placeholder="Observaciones…"></textarea>
       </div>
 
-      <div class="sticky-actions">
-        <button class="btn primary block" id="btnFinish">✔ Guardar pedido</button>
+      <div class="fixed-actions">
+        <button class="btn ok grow" id="btnFinish">✔ Guardar</button>
+        <button class="btn warn" id="btnClearOrder">🧹 Limpiar</button>
       </div>
     </section>
 
@@ -66,15 +62,17 @@
     <section id="view-historial" class="view">
       <div class="card">
         <input type="search" id="histSearch" placeholder="🔍 Buscar cliente o #…">
-        <div class="grid-2 mt">
+        <div class="small muted mt">Fechas:</div>
+        <div class="grid-2 mt-xs">
           <input type="date" id="histFrom" title="Desde">
           <input type="date" id="histTo" title="Hasta">
         </div>
         <div class="row gap-xs wrap mt">
           <button class="btn small" id="btnHistToday">Hoy</button>
           <button class="btn small" id="btnHistAll">Todos</button>
+          <button class="btn small" id="btnHistDown">Descargados</button>
           <button class="btn small" id="btnSelAll">Selec. todos</button>
-          <button class="btn small primary grow" id="btnExportSel">⬇ Excel</button>
+          <button class="btn small primary grow" id="btnExportSel">⬇ Descargar</button>
         </div>
       </div>
       <div id="histList"></div>
@@ -97,13 +95,7 @@
 
     <!-- ================= INVENTARIO ================= -->
     <section id="view-inventario" class="view">
-      <div class="card">
-        <div id="invSummary" class="small"></div>
-        <label class="btn primary block mt">📂 Cargar inventario (.xlsx)
-          <input type="file" id="invFile" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>
-        </label>
-      </div>
-      <div class="card">
+      <div class="card inv-card">
         <div class="row gap-s">
           <input type="search" id="invSearch" placeholder="🔍 Buscar producto…" class="grow">
           <select id="invFilter" style="width:auto">
@@ -112,12 +104,19 @@
             <option value="stock">Disponible</option>
           </select>
         </div>
-        <div id="invList" class="results mt"></div>
+        <div id="invList" class="inv-results"></div>
       </div>
     </section>
 
     <!-- ================= MÁS ================= -->
     <section id="view-mas" class="view">
+      <div class="card">
+        <h2>Inventario</h2>
+        <div id="invSummary" class="small"></div>
+        <label class="btn primary block mt">📂 Cargar inventario (.xlsx)
+          <input type="file" id="invFile" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>
+        </label>
+      </div>
       <div class="card">
         <h2>Apariencia</h2>
         <div class="seg" id="themeSeg">
