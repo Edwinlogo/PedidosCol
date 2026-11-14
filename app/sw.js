@@ -1,10 +1,11 @@
 /* Service worker: funcionamiento sin conexión + recepción de archivos compartidos desde Android. */
-const VERSION = 'v1';
+const VERSION = 'v2';
 const CACHE = `pedidos-${VERSION}`;
 const ASSETS = [
   './', 'index.html', 'styles.css', 'manifest.webmanifest',
   'js/db.js', 'js/excel.js', 'js/app.js', 'vendor/exceljs.min.js',
-  'assets/Plantillas.xlsx', 'assets/inventario_inicial.xlsx', 'icons/icon-192.png', 'icons/icon-512.png',
+  'assets/Plantillas.xlsx', 'assets/inventario_inicial.xlsx',
+  'icons/logo.svg', 'icons/icon-192.png', 'icons/icon-512.png',
 ];
 
 self.addEventListener('install', e => {

@@ -2,8 +2,8 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#c8102e">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#22357f" id="metaTheme">
   <title>Pedidos Colombina</title>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/icon-192.png">
@@ -12,8 +12,14 @@
 </head>
 <body>
   <header class="topbar">
-    <h1 id="viewTitle">Nuevo pedido</h1>
-    <span id="invBadge" class="badge" title="Fecha del inventario cargado">Sin inventario</span>
+    <div class="brand">
+      <img src="icons/logo.svg" alt="Colombina" class="brand-logo">
+      <h1 id="viewTitle">Pedido</h1>
+    </div>
+    <div class="row gap-s">
+      <span id="invBadge" class="badge">Sin inv.</span>
+      <button class="icon-btn" id="btnTheme" title="Cambiar tema" aria-label="Cambiar tema">🌙</button>
+    </div>
   </header>
 
   <div id="banner" class="banner hidden"></div>
@@ -23,14 +29,14 @@
     <section id="view-pedido" class="view active">
       <div class="card client-card">
         <div class="row between">
-          <div>
-            <div class="muted small" id="clientStatus">Detectando ubicación…</div>
+          <div class="grow min0">
+            <div class="muted small" id="clientStatus">Ubicando…</div>
             <div class="client-name" id="clientName">—</div>
-            <div class="muted small" id="clientInfo"></div>
+            <div class="muted small truncate" id="clientInfo"></div>
           </div>
-          <div class="col gap-s">
+          <div class="row gap-xs">
+            <button class="btn small ghost" id="btnLocate" title="Detectar ubicación">📍</button>
             <button class="btn small" id="btnPickClient">Cambiar</button>
-            <button class="btn small ghost" id="btnLocate" title="Volver a detectar">📍 Detectar</button>
           </div>
         </div>
         <div id="nearbyList" class="chips"></div>
@@ -38,39 +44,37 @@
       </div>
 
       <div class="card">
-        <div class="search-wrap">
-          <input type="search" id="prodSearch" placeholder="Buscar producto por código o nombre…" autocomplete="off">
-        </div>
+        <input type="search" id="prodSearch" placeholder="🔍 Buscar código o producto…" autocomplete="off">
         <div id="prodResults" class="results"></div>
       </div>
 
       <div class="card">
-        <div class="row between">
-          <h2>Productos del pedido <span class="muted" id="lineCount"></span></h2>
+        <div class="row between mb-xs">
+          <h2>Productos <span class="muted" id="lineCount"></span></h2>
           <button class="btn small ghost danger" id="btnClearOrder">Vaciar</button>
         </div>
         <div id="orderLines" class="lines"></div>
-        <textarea id="orderNotes" rows="2" placeholder="Observaciones (opcional)"></textarea>
+        <textarea id="orderNotes" rows="2" placeholder="Observaciones…"></textarea>
       </div>
 
       <div class="sticky-actions">
-        <button class="btn primary block" id="btnFinish">✔ Finalizar pedido</button>
+        <button class="btn primary block" id="btnFinish">✔ Guardar pedido</button>
       </div>
     </section>
 
     <!-- ================= HISTORIAL ================= -->
     <section id="view-historial" class="view">
       <div class="card">
-        <div class="row gap-s wrap">
-          <input type="search" id="histSearch" placeholder="Buscar cliente…" class="grow">
+        <input type="search" id="histSearch" placeholder="🔍 Buscar cliente o #…">
+        <div class="grid-2 mt">
           <input type="date" id="histFrom" title="Desde">
           <input type="date" id="histTo" title="Hasta">
         </div>
-        <div class="row gap-s wrap mt">
+        <div class="row gap-xs wrap mt">
           <button class="btn small" id="btnHistToday">Hoy</button>
           <button class="btn small" id="btnHistAll">Todos</button>
-          <button class="btn small" id="btnSelAll">Seleccionar todos</button>
-          <button class="btn small primary" id="btnExportSel">⬇ Exportar Excel</button>
+          <button class="btn small" id="btnSelAll">Selec. todos</button>
+          <button class="btn small primary grow" id="btnExportSel">⬇ Excel</button>
         </div>
       </div>
       <div id="histList"></div>
@@ -80,12 +84,12 @@
     <section id="view-clientes" class="view">
       <div class="card">
         <div class="row gap-s">
-          <input type="search" id="cliSearch" placeholder="Buscar cliente…" class="grow">
+          <input type="search" id="cliSearch" placeholder="🔍 Buscar cliente…" class="grow">
           <button class="btn primary" id="btnNewClient">+ Nuevo</button>
         </div>
-        <div class="row gap-s wrap mt">
-          <label class="btn small">📥 Importar Excel<input type="file" id="cliImport" accept=".xlsx,.xls" hidden></label>
-          <button class="btn small" id="btnCliExport">📤 Exportar Excel</button>
+        <div class="grid-2 mt">
+          <label class="btn small">📥 Importar<input type="file" id="cliImport" accept=".xlsx,.xls" hidden></label>
+          <button class="btn small" id="btnCliExport">📤 Exportar</button>
         </div>
       </div>
       <div id="cliList"></div>
@@ -94,19 +98,18 @@
     <!-- ================= INVENTARIO ================= -->
     <section id="view-inventario" class="view">
       <div class="card">
-        <div id="invSummary" class="muted"></div>
-        <label class="btn primary block mt">📂 Cargar inventario del día (.xlsx)
+        <div id="invSummary" class="small"></div>
+        <label class="btn primary block mt">📂 Cargar inventario (.xlsx)
           <input type="file" id="invFile" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>
         </label>
-        <p class="small muted">Consejo: con la app instalada, desde WhatsApp o Gmail usa <b>Compartir → Pedidos Colombina</b> sobre el Excel y el inventario se actualiza solo.</p>
       </div>
       <div class="card">
         <div class="row gap-s">
-          <input type="search" id="invSearch" placeholder="Buscar producto…" class="grow">
-          <select id="invFilter">
+          <input type="search" id="invSearch" placeholder="🔍 Buscar producto…" class="grow">
+          <select id="invFilter" style="width:auto">
             <option value="all">Todos</option>
-            <option value="ref">Referencias habituales</option>
-            <option value="stock">Con disponible</option>
+            <option value="ref">⭐ Habituales</option>
+            <option value="stock">Disponible</option>
           </select>
         </div>
         <div id="invList" class="results mt"></div>
@@ -116,24 +119,30 @@
     <!-- ================= MÁS ================= -->
     <section id="view-mas" class="view">
       <div class="card">
-        <h2>Ubicación</h2>
-        <label class="field">Radio de detección automática (metros)
-          <input type="number" id="setRadius" min="10" step="10">
-        </label>
-        <label class="row gap-s"><input type="checkbox" id="setDeduct"> Descontar del disponible los pedidos hechos después de cargar el inventario</label>
-      </div>
-      <div class="card">
-        <h2>Copia de seguridad</h2>
-        <p class="small muted">Los datos se guardan en este teléfono. Haz copias periódicas para no perder pedidos.</p>
-        <div class="row gap-s wrap">
-          <button class="btn" id="btnBackup">💾 Descargar copia</button>
-          <label class="btn">♻ Restaurar copia<input type="file" id="restoreFile" accept=".json" hidden></label>
+        <h2>Apariencia</h2>
+        <div class="seg" id="themeSeg">
+          <button data-theme="auto">Auto</button>
+          <button data-theme="light">☀ Claro</button>
+          <button data-theme="dark">🌙 Oscuro</button>
         </div>
       </div>
       <div class="card">
-        <h2>Información</h2>
+        <h2>Ubicación y stock</h2>
+        <label class="field">Radio GPS (metros)
+          <input type="number" id="setRadius" min="10" step="10">
+        </label>
+        <label class="row gap-s small"><input type="checkbox" id="setDeduct"> Descontar pedidos del día</label>
+      </div>
+      <div class="card">
+        <h2>Respaldo</h2>
+        <div class="grid-2">
+          <button class="btn" id="btnBackup">💾 Guardar</button>
+          <label class="btn">♻ Restaurar<input type="file" id="restoreFile" accept=".json" hidden></label>
+        </div>
+      </div>
+      <div class="card">
         <div id="stats" class="small muted"></div>
-        <button class="btn small mt" id="btnInstall" hidden>📲 Instalar aplicación</button>
+        <button class="btn primary block mt" id="btnInstall" hidden>📲 Instalar app</button>
       </div>
     </section>
   </main>
@@ -146,7 +155,6 @@
     <button data-view="mas"><span>⚙</span>Más</button>
   </nav>
 
-  <!-- Modal genérico -->
   <div id="modal" class="modal hidden">
     <div class="modal-box">
       <div class="modal-head">
