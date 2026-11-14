@@ -175,7 +175,14 @@ textarea { margin-top: .5rem; resize: vertical; }
 .mini-label { font-size: .68rem; color: var(--muted); display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .warn-text { color: var(--warn); font-size: .74rem; font-weight: 600; }
 
-.sticky-actions { position: sticky; bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom) + .35rem); z-index: 5; }
+.sticky-actions {
+  position: sticky;
+  bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom) + .5rem);
+  margin-top: 1.25rem;
+  padding-top: .5rem;
+  z-index: 5;
+}
+.sticky-actions .btn { box-shadow: 0 4px 12px rgba(15, 23, 42, .22); }
 
 .order-card { display: flex; gap: .55rem; align-items: center; }
 .order-card .grow { cursor: pointer; min-width: 0; }
