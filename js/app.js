@@ -684,6 +684,7 @@
     let list = q ? searchProducts(q, 250) : [...S.products.values()].sort((a, b) => a.group.localeCompare(b.group) || a.name.localeCompare(b.name));
     if (f === 'ref') list = list.filter(p => p.ref);
     if (f === 'stock') list = list.filter(p => available(p.code) > 0);
+    if (f === 'nostock') list = list.filter(p => (available(p.code) ?? 0) <= 0);
     const total = list.length;
     $('#invList').innerHTML = list.slice(0, 200).map(p => `
       <div class="item" style="cursor:default">
