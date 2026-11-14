@@ -45,8 +45,6 @@ const DB = (() => {
     get: (store, key) => tx(store, 'readonly', s => reqP(s.get(key))),
     put: (store, val) => tx(store, 'readwrite', s => reqP(s.put(val))),
     del: (store, key) => tx(store, 'readwrite', s => reqP(s.delete(key))),
-    clear: (store) => tx(store, 'readwrite', s => reqP(s.clear())),
-    /** Reemplaza todo el contenido del store por la lista dada (en una sola transacción). */
     replaceAll: (store, list) => tx(store, 'readwrite', s => { s.clear(); list.forEach(v => s.put(v)); return list.length; }),
     putMany: (store, list) => tx(store, 'readwrite', s => { list.forEach(v => s.put(v)); return list.length; }),
     getMeta: async (key, def = null) => { const r = await DB.get('meta', key); return r ? r.value : def; },
