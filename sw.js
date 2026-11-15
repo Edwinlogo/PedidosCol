@@ -1,5 +1,5 @@
 /* Service worker: funcionamiento sin conexión + recepción de archivos compartidos desde Android. */
-const VERSION = 'v11';
+const VERSION = 'v12';
 const CACHE = `pedidos-${VERSION}`;
 const ASSETS = [
   './', 'index.html', 'styles.css', 'manifest.webmanifest',
