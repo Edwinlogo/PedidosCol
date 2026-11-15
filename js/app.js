@@ -293,10 +293,19 @@
   }
 
   /* ======================= Líneas ======================= */
+  function summarizeLines(lines) {
+    if (!lines?.length) return '';
+    const un = lines.filter(l => l.unit === 'UN').reduce((s, l) => s + (Number(l.qty) || 0), 0);
+    const car = lines.filter(l => (l.unit || 'CAR') === 'CAR').reduce((s, l) => s + (Number(l.qty) || 0), 0);
+    const parts = [lines.length];
+    if (un) parts.push(`${fmt(un)}UN`);
+    if (car || !un) parts.push(`${fmt(car)}CAR`);
+    return parts.join('-');
+  }
+
   function renderLines() {
     const lines = S.draft.lines;
-    const totalCar = lines.filter(l => l.unit === 'CAR').reduce((s, l) => s + (Number(l.qty) || 0), 0);
-    $('#lineCount').textContent = lines.length ? `(${lines.length} · ${fmt(totalCar)} CAR)` : '';
+    $('#lineCount').textContent = lines.length ? `(${summarizeLines(lines)})` : '';
     $('#orderNotes').value = S.draft.notes || '';
     $('#orderLines').innerHTML = lines.map((l, i) => {
       const p = S.products.get(l.code);
@@ -391,13 +400,12 @@
         const n = orders.filter(x => isoDay(x.date) === day).length;
         html += `<div class="date-head">${fmtDay(day)} · ${n}</div>`; lastDay = day;
       }
-      const cajas = o.lines.filter(l => l.unit === 'CAR').reduce((s, l) => s + l.qty, 0);
       html += `
         <div class="card order-card">
           <input type="checkbox" data-sel="${o.id}" ${S.selectedOrders.has(o.id) ? 'checked' : ''}>
           <div class="grow" data-open="${o.id}">
             <div class="row between"><div class="row min0"><span class="order-num">#${o.id}</span><b class="truncate">${esc(o.clientName)}</b></div><span class="small muted">${fmtTime(o.date)}</span></div>
-            <div class="small muted mt-xs">${o.lines.length} ref. · ${fmt(cajas)} CAR
+            <div class="small muted mt-xs">${summarizeLines(o.lines)}
               ${o.exportedAt ? '<span class="tag ok">Descargado</span>' : ''}${o.updatedAt ? '<span class="tag">Editado</span>' : ''}</div>
           </div>
         </div>`;
