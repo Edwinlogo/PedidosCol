@@ -727,22 +727,50 @@
       app: 'pedidos-colombina', version: 1, exportedAt: new Date().toISOString(),
       products: await DB.all('products'), clients: await DB.all('clients'), orders: await DB.all('orders'), meta: await DB.all('meta'),
     };
-    const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
-    await shareBlob(blob, `respaldo_pedidos_${isoDay(new Date())}.json`, 'Respaldo');
+    const blob = new Blob([JSON.stringify(data)], { type: 'application/octet-stream' });
+    await shareBlob(blob, `respaldo_${isoDay(new Date())}.pedido`, 'Respaldo');
   }
-  async function restore(file) {
+  async function restore(file, auto = false) {
     try {
       const data = JSON.parse(await file.text());
       if (data.app !== 'pedidos-colombina') throw new Error('Archivo inválido');
-      if (!confirm(`¿Restaurar copia del ${fmtDay(isoDay(data.exportedAt))} (${data.orders.length} pedidos)?`)) return;
+      if (!auto && !confirm(`¿Restaurar copia del ${fmtDay(isoDay(data.exportedAt))} (${data.orders.length} pedidos)?`)) return false;
       await DB.replaceAll('products', data.products); await DB.replaceAll('clients', data.clients);
       await DB.replaceAll('orders', data.orders); await DB.replaceAll('meta', data.meta);
-      await loadAll(); renderAll(); toast('Restaurado');
-    } catch (e) { alert('Error: ' + e.message); }
+      await loadAll(); renderAll(); renderSettings();
+      toast(`✔ Respaldo restaurado (${data.orders.length} pedidos)`, 3200);
+      return true;
+    } catch (e) { if (!auto) alert('Error: ' + e.message); return false; }
   }
 
-  /* ======================= Archivo compartido ======================= */
+  /* ======================= Abrir / compartir archivo (.pedido o .xlsx) ======================= */
+  async function handleIncomingFile(blob, name) {
+    const lower = String(name || '').toLowerCase();
+    // Si es .pedido o contiene un respaldo JSON válido de la app, restaurar automáticamente
+    if (lower.endsWith('.pedido') || lower.endsWith('.json')) {
+      if (await restore(blob, true)) { showView('mas'); return; }
+    } else {
+      try {
+        const peek = await blob.slice(0, 64).text();
+        if (peek.trim().startsWith('{') && await restore(blob, true)) { showView('mas'); return; }
+      } catch {}
+    }
+    try { await importInventoryFile(blob, name); showView('inventario'); }
+    catch {
+      if (confirm(`¿Importar "${name}" como clientes?`)) { await importClientsFile(blob); showView('clientes'); }
+    }
+  }
+
   async function handleSharedFile() {
+    // 1. Abrir archivo directamente desde el sistema ("Abrir con → Pedidos")
+    if ('launchQueue' in window) {
+      window.launchQueue.setConsumer(async params => {
+        if (!params?.files?.length) return;
+        const f = await params.files[0].getFile();
+        await handleIncomingFile(f, f.name);
+      });
+    }
+    // 2. Recibir archivo mediante "Compartir → Pedidos"
     const params = new URLSearchParams(location.search);
     if (!params.has('shared')) return;
     history.replaceState(null, '', location.pathname);
@@ -750,13 +778,10 @@
       const cache = await caches.open('shared-files');
       const res = await cache.match('shared-file');
       if (!res) return;
-      const name = decodeURIComponent(res.headers.get('X-Filename') || 'archivo.xlsx');
+      const name = decodeURIComponent(res.headers.get('X-Filename') || 'archivo');
       const blob = await res.blob();
       await cache.delete('shared-file');
-      try { await importInventoryFile(blob, name); showView('inventario'); }
-      catch {
-        if (confirm(`¿Importar "${name}" como clientes?`)) { await importClientsFile(blob); showView('clientes'); }
-      }
+      await handleIncomingFile(blob, name);
     } catch (e) { console.error(e); }
   }
 
