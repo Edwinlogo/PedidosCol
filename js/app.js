@@ -496,10 +496,12 @@
       </div>`).join('')}</div>` : '<div class="empty">Sin clientes</div>';
   }
 
-  /** Si se pega un par "lat, lng" de Google Maps (ej. "4.4359433,-75.1734278"), rellena ambos campos. */
+  /** Si se pega un par "lat,lng" de Google Maps (ej. "4.4359433,-75.1734278"), la coma separa latitud de longitud. */
   function splitCoordsText(text) {
-    const m = String(text || '').trim().match(/^\(?(-?\d+(?:\.\d+)?)\s*[,;\s]\s*(-?\d+(?:\.\d+)?)\)?$/);
-    return m ? [m[1], m[2]] : null;
+    const s = String(text || '').trim().replace(/^\(|\)$/g, '');
+    if (!s.includes(',')) return null;
+    const [a, b] = s.split(',').map(x => x.trim());
+    return /^-?\d+(?:\.\d+)?$/.test(a) && /^-?\d+(?:\.\d+)?$/.test(b) ? [a, b] : null;
   }
 
   let savingClient = false;
@@ -517,7 +519,7 @@
       </div>
       <label class="field">Dirección<input id="ceAddr" value="${esc(c.address)}"></label>
       <div class="row gap-xs">
-        <label class="field grow">Latitud<input id="ceLat" type="text" inputmode="decimal" placeholder="4.4359,-75.1734" value="${c.lat ?? ''}"></label>
+        <label class="field grow">Latitud<input id="ceLat" type="text" inputmode="decimal" value="${c.lat ?? ''}"></label>
         <label class="field grow">Longitud<input id="ceLng" type="text" inputmode="decimal" value="${c.lng ?? ''}"></label>
         <label class="field" style="width:4.8rem">Radio<input id="ceRad" type="number" inputmode="numeric" placeholder="${S.settings.radius}" value="${c.radius ?? ''}"></label>
       </div>
